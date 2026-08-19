@@ -23,6 +23,7 @@ import {
   runNgrokCommand,
   runPrintCommand,
   runVisualizeCommand,
+  runWorkspaceCommand,
 } from "./runners.js";
 
 // Register the last-resort handlers before any run starts, so a rejection that
@@ -71,6 +72,8 @@ if (command.kind === "auth") {
   await runIngestCommand(command);
 } else if (command.kind === "visualize") {
   await runVisualizeCommand(command);
+} else if (command.kind === "workspace") {
+  await runWorkspaceCommand(command);
 } else if (shouldPrintStartupError(argv, parsedCommand, command)) {
   process.stderr.write(`${command.message}\n`);
   process.exitCode = command.exitCode;

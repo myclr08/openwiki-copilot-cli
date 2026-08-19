@@ -32,6 +32,9 @@ import {
 } from "../telemetry/index.js";
 import { exportStaticVisualizer } from "../visualize/static-export.js";
 import { runVisualizeServer } from "../visualize/server.js";
+import { runCopilotWorkspace } from "../copilot/run.js";
+import type { RepoRunResult } from "../copilot/types.js";
+import type { WorkspaceCliCommand } from "./workspace-command.js";
 import type { CliCommand } from "./commands.js";
 import { isDebugMode } from "./debug.js";
 import { getAuthFix, getAuthFixSteps } from "./diagnostics/auth-fix.js";
@@ -372,4 +375,105 @@ export function writePrintErrorDiagnostics(error: unknown): void {
   for (const diagnostic of diagnostics) {
     process.stderr.write(`${diagnostic.label}: ${diagnostic.value}\n`);
   }
+}
+
+/**
+ * Runs `openwiki workspace`: document every repository in a folder with
+ * Copilot CLI.
+ *
+ * Output is line-oriented rather than a TUI because a workspace run is long
+ * and usually watched in a scrollback or a CI log. Tool activity is shown only
+ * under OPENWIKI_DEBUG; the default stream is the run's narration plus a final
+ * per-repository summary.
+ *
+ * The exit code is 1 when any repository failed, so a scheduled run fails
+ * loudly instead of reporting success over a half-written wiki.
+ */
+export async function runWorkspaceCommand(
+  command: WorkspaceCliCommand,
+): Promise<void> {
+  const debug = isDebugMode();
+
+  try {
+    const result = await runCopilotWorkspace({
+      command: command.command,
+      language: command.language,
+      modelId: command.modelId,
+      only: command.only,
+      outputDir: command.outputDir,
+      userMessage: command.userMessage,
+      workspaceRoot: command.workspaceRoot,
+      onEvent: (event) => {
+        if (event.type === "text") {
+          process.stdout.write(`${event.text.trim()}\n`);
+          return;
+        }
+
+        if (!debug) return;
+
+        if (event.type === "debug") {
+          process.stderr.write(`${event.message}\n`);
+        } else if (event.type === "tool_start") {
+          process.stderr.write(`  → ${event.call}\n`);
+        }
+      },
+    });
+
+    process.stdout.write(
+      formatWorkspaceSummary(result.results, result.wikiRoot),
+    );
+    process.exitCode = result.results.some(
+      (entry) => entry.outcome === "failed",
+    )
+      ? 1
+      : 0;
+  } catch (error) {
+    process.stderr.write(`${getErrorMessage(error)}\n`);
+    process.exitCode = 1;
+  }
+}
+
+/** Renders the end-of-run report for a workspace run. */
+export function formatWorkspaceSummary(
+  results: RepoRunResult[],
+  wikiRoot: string,
+): string {
+  const counts = {
+    failed: results.filter((entry) => entry.outcome === "failed").length,
+    skipped: results.filter((entry) => entry.outcome === "skipped").length,
+    succeeded: results.filter((entry) => entry.outcome === "succeeded").length,
+  };
+
+  const lines = ["", `Wiki: ${wikiRoot}`];
+
+  for (const entry of results) {
+    const detail =
+      entry.outcome === "failed"
+        ? ` — ${entry.error ?? "failed"}`
+        : entry.outcome === "skipped"
+          ? ` — ${entry.reason ?? "skipped"}`
+          : "";
+    lines.push(`  ${symbolFor(entry.outcome)} ${entry.repo.slug}${detail}`);
+
+    if (entry.dirtyPaths.length > 0) {
+      lines.push(
+        `      warning: modified ${entry.dirtyPaths.length} path(s) in the source repository`,
+      );
+    }
+  }
+
+  lines.push(
+    "",
+    `${counts.succeeded} documented, ${counts.skipped} skipped, ${counts.failed} failed.`,
+    "",
+  );
+
+  return lines.join("\n");
+}
+
+/** The status glyph shown beside a repository in the summary. */
+function symbolFor(outcome: RepoRunResult["outcome"]): string {
+  if (outcome === "succeeded") return "✓";
+
+  return outcome === "skipped" ? "–" : "✗";
 }

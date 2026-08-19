@@ -26,12 +26,26 @@ validates what comes back. Copilot does the reading and writing.
 
 ## Architecture
 
-### Engine branch
+### Engine boundary
 
-`runOpenWikiAgent()` (`src/agent/index.ts`) branches early. When the resolved
-provider is `copilot-cli`, the LangChain model, DeepAgents graph, and
-checkpointer are never constructed; control passes to the Copilot
-orchestrator. Every other provider keeps its existing path untouched.
+The backend is reached through its own command, `openwiki workspace`, rather
+than through the provider registry.
+
+The design originally put it in `PROVIDER_CONFIGS` as a `copilot-cli` provider
+and branched inside `runOpenWikiAgent()`. Implementation showed that to be the
+wrong seam. Every entry in that registry describes a credential and an endpoint
+that `createModel()` turns into a `BaseChatModel`; Copilot CLI has neither. It
+authenticates itself through `copilot login`, and it is never constructed as a
+model. Registering it would have meant threading a non-provider through the
+credential wizard, model availability checks, and the auth flows — churn in the
+paths that serve the twelve real providers, in exchange for nothing.
+
+A separate command keeps the hosted-model paths literally untouched: no file
+under `src/agent/` changes.
+
+A single repository is not a special case. `openwiki workspace <repo>` sees a
+workspace root that is itself a repository and documents just that one, through
+the same code path.
 
 ### Event bridge
 
@@ -45,14 +59,14 @@ upstream must never crash a run.
 
 ### Modules
 
-| Module | Responsibility |
-| --- | --- |
-| `src/copilot/detect.ts` | Locate the binary (`COPILOT_CLI_BIN` override), preflight version and entitlement |
-| `src/copilot/events.ts` | Parse JSONL into `OpenWikiRunEvent`; tolerate unknown shapes |
-| `src/copilot/process.ts` | Spawn `copilot -p`, stream stdout, handle exit codes, timeout, cancellation |
-| `src/copilot/prompt.ts` | Build the Copilot prompt from OpenWiki's existing code-mode prompts plus OKF, Mermaid, and link rules |
-| `src/copilot/workspace.ts` | Discover git repositories under a root folder |
-| `src/copilot/run.ts` | Orchestrate: sequential per-repo runs, post-processing, cross-repo merge |
+| Module                     | Responsibility                                                                                        |
+| -------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `src/copilot/detect.ts`    | Locate the binary (`COPILOT_CLI_BIN` override), preflight version and entitlement                     |
+| `src/copilot/events.ts`    | Parse JSONL into `OpenWikiRunEvent`; tolerate unknown shapes                                          |
+| `src/copilot/process.ts`   | Spawn `copilot -p`, stream stdout, handle exit codes, timeout, cancellation                           |
+| `src/copilot/prompt.ts`    | Build the Copilot prompt from OpenWiki's existing code-mode prompts plus OKF, Mermaid, and link rules |
+| `src/copilot/workspace.ts` | Discover git repositories under a root folder                                                         |
+| `src/copilot/run.ts`       | Orchestrate: sequential per-repo runs, post-processing, cross-repo merge                              |
 
 Each module has one job and is testable without a real Copilot binary.
 

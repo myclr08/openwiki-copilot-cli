@@ -7,6 +7,10 @@ import {
   parseIngestionTarget,
   type IngestionTarget,
 } from "../ingestion/ingestion.js";
+import {
+  parseWorkspaceCommand,
+  type WorkspaceCliCommand,
+} from "./workspace-command.js";
 
 export type HelpRow = {
   label: string;
@@ -64,6 +68,7 @@ export type CliCommand =
       exitCode: 0;
       target: CronTarget | null;
     }
+  | WorkspaceCliCommand
   | { kind: "help"; exitCode: 0 }
   | {
       kind: "run";
@@ -215,6 +220,10 @@ export function parseCommand(argv: string[]): CliCommand {
       port,
       url,
     };
+  }
+
+  if (argv[0] === "workspace") {
+    return parseWorkspaceCommand(argv.slice(1));
   }
 
   if (argv[0] === "visualize") {
@@ -794,6 +803,7 @@ export const helpContent: HelpContent = {
     "openwiki cron delete all",
     "openwiki ngrok start [url] [--port <port>]",
     "openwiki visualize [path] [--port <port>] [--no-open] [--export <dir>]",
+    "openwiki workspace <folder> [--init|--update] [--output <dir>] [--only <names>] [--model <id>]",
   ],
   commands: [
     {
@@ -858,6 +868,11 @@ export const helpContent: HelpContent = {
       label: "openwiki visualize [path] [--export <dir>]",
       description:
         "Serve a live graph and reader, or export a static graph for web hosting (defaults to ./openwiki).",
+    },
+    {
+      label: "openwiki workspace <folder>",
+      description:
+        "Document every repository in a folder using GitHub Copilot CLI, writing one central wiki. Requires the copilot CLI on PATH.",
     },
   ],
   options: [
@@ -954,6 +969,10 @@ export const helpContent: HelpContent = {
     "openwiki visualize",
     "openwiki visualize openwiki --port 4400 --no-open",
     "openwiki visualize openwiki --export docs/openwiki-visualizer",
+    "openwiki workspace ~/repos",
+    "openwiki workspace ~/repos --update",
+    "openwiki workspace ~/repos --output ~/wiki --model claude-sonnet-4.6",
+    "openwiki workspace ~/repos --only api-service,web-app",
   ],
   developmentExamples: ["openwiki --dry-run"],
 };
