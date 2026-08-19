@@ -37,10 +37,7 @@ import {
 import { runOpenWikiIngestion } from "../../ingestion/ingestion.js";
 import { getErrorMessage } from "../../platform/diagnostics.js";
 import { InitSetup, needsCredentialSetup } from "../../setup/credentials.js";
-import {
-  withRunTelemetry,
-  type RunTelemetryContext,
-} from "../../telemetry/index.js";
+import { type RunTelemetryContext } from "../../telemetry/index.js";
 import type { CliCommand, OpenWikiRunMode } from "../commands.js";
 import { AuthFixPanel } from "../components/panels.js";
 import { CredentialDiagnosticsPanel } from "../components/panels.js";
@@ -506,48 +503,39 @@ export function App({ command }: AppProps) {
       modelId: sessionModelId,
       outputMode: runtimeOutputMode,
       threadId: sessionThreadId.current,
-      telemetryFile: command.telemetryFile ?? undefined,
       onEvent: handleRunEvent,
     };
 
-    // withRunTelemetry is the single boundary that records this run. It wraps repo
-    // setup and the connector pull too (not just the agent), so a throw in either
-    // pre-agent step is recorded rather than reaching only the UI catch below.
     const telemetryContext: RunTelemetryContext = {};
 
-    withRunTelemetry(
-      resolvedCommand,
-      runOptions,
-      telemetryContext,
-      async () => {
-        if (runMode === "code") {
-          await ensureCodeModeRepoSetup(runtimeCwd, {
-            createWorkflow: resolvedCommand === "init",
-          });
-        }
+    void (async () => {
+      if (runMode === "code") {
+        await ensureCodeModeRepoSetup(runtimeCwd, {
+          createWorkflow: resolvedCommand === "init",
+        });
+      }
 
-        await scheduler.yield();
+      await scheduler.yield();
 
-        // Code-mode connectors pull their evidence and augment the agent message
-        // before the run, matching the --print path exactly. They emit progress
-        // into the same run log so the pull is visible rather than a silent gap.
-        const userMessage =
-          runMode === "code" && resolvedCommand !== "chat"
-            ? await runCodeModeConnectors(
-                runtimeCwd,
-                activeUserMessage ?? undefined,
-                handleRunEvent,
-              )
-            : activeUserMessage;
+      // Code-mode connectors pull their evidence and augment the agent message
+      // before the run, matching the --print path exactly. They emit progress
+      // into the same run log so the pull is visible rather than a silent gap.
+      const userMessage =
+        runMode === "code" && resolvedCommand !== "chat"
+          ? await runCodeModeConnectors(
+              runtimeCwd,
+              activeUserMessage ?? undefined,
+              handleRunEvent,
+            )
+          : activeUserMessage;
 
-        return runOpenWikiAgent(
-          resolvedCommand,
-          runtimeCwd,
-          { ...runOptions, userMessage },
-          telemetryContext,
-        );
-      },
-    )
+      return runOpenWikiAgent(
+        resolvedCommand,
+        runtimeCwd,
+        { ...runOptions, userMessage },
+        telemetryContext,
+      );
+    })()
       .then((result) => {
         if (!mountedRef.current || activeRunId.current !== runId) {
           return;

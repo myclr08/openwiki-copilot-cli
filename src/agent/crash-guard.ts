@@ -1,6 +1,3 @@
-import { describeErrorForTelemetry } from "../telemetry/errors.js";
-import { recordRunSafe } from "../telemetry/record-run-safe.js";
-
 import type { OpenWikiCommand, OpenWikiOutputMode } from "./types.js";
 import {
   persistRunMetadataIfChanged,
@@ -115,18 +112,6 @@ export async function handleFatal(
   clearActiveRun();
 
   if (active) {
-    // Record the crash as a failure so it finally appears in the data, classified
-    // and fingerprinted by the same boundary as every other failure.
-    try {
-      await recordRunSafe(
-        active.command,
-        { outputMode: active.outputMode },
-        { outcome: "failure", ...describeErrorForTelemetry(error) },
-      );
-    } catch {
-      // Intentionally ignored: telemetry must never block the exit.
-    }
-
     // Stamp interrupted so the next scheduled update does not no-op against a
     // half-written wiki.
     try {

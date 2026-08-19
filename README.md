@@ -463,20 +463,11 @@ In chat, `/api-key` updates the current provider key and `/langsmith-key` update
 
 ## Telemetry
 
-OpenWiki collects anonymous, aggregate usage data to understand how the tool is used and improve it. Telemetry is on by default and easy to turn off.
+This fork sends none.
 
-**Collected** on a single `openwiki_run` event, keyed by a random install ID in `~/.openwiki/install-id`: the command (init / update), the outcome (success / failure / no-op) with a coarse error category on failure (never the message), and at setup only, the brain mode, model provider, and configured connector names.
+Upstream OpenWiki reports an anonymous `openwiki_run` event to PostHog. That path is removed here, not merely switched off: the analytics client, the event builders, the install-id file in `~/.openwiki/`, the first-run notice, and the `posthog-node` dependency are all gone, so there is no code left that could send anything and no flag that could turn it back on.
 
-**Never collected:** file contents, repository data or names, credentials, prompts, model output, connector payloads, error messages, file paths, URLs, model IDs, run duration, or your IP address. Interactive chat, `auth`, and `ingest` are not recorded. Scheduled/CI runs are tagged as anonymous reliability data under a shared CI identifier and never counted as installs.
-
-Opt out with either environment variable, or add the first line to `~/.openwiki/.env` to disable permanently:
-
-```sh
-export OPENWIKI_TELEMETRY_DISABLED=1
-export DO_NOT_TRACK=1   # cross-tool standard
-```
-
-To see exactly what a run would send, add `--telemetry-file=<path>` to any run.
+What remains under `src/telemetry/` is the local error taxonomy — the classification that lets the CLI tell you which stage a run failed in and who owns the fix. It never leaves the process.
 
 ## Contributing
 

@@ -24,10 +24,7 @@ import type {
   OpenWikiRunOptions,
   OpenWikiRunResult,
 } from "../agent/types.js";
-import {
-  withRunTelemetry,
-  type RunTelemetryContext,
-} from "../telemetry/index.js";
+import type { RunTelemetryContext } from "../telemetry/index.js";
 
 const INGESTION_WINDOW_HOURS = 24;
 
@@ -185,14 +182,12 @@ async function runSourceIngestion({
       }),
     };
 
-    // withRunTelemetry is the single boundary that records this per-source update
-    // run, matching the CLI paths so ingestion runs land in telemetry too.
     const telemetryContext: RunTelemetryContext = {};
-    const agentResult = await withRunTelemetry(
+    const agentResult = await runOpenWikiAgent(
       "update",
+      cwd,
       runOptions,
       telemetryContext,
-      () => runOpenWikiAgent("update", cwd, runOptions, telemetryContext),
     );
 
     return {

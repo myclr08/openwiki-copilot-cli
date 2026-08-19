@@ -83,7 +83,6 @@ export type CliCommand =
       print: boolean;
       shouldStart: boolean;
       userMessage: string | null;
-      telemetryFile: string | null;
     }
   | {
       kind: "error";
@@ -466,7 +465,6 @@ function parseRunCommand(
   let modelId: string | null = null;
   let print = false;
   let command: OpenWikiCommand = "chat";
-  let telemetryFile: string | null = null;
 
   const userMessageParts: string[] = [];
 
@@ -626,37 +624,6 @@ function parseRunCommand(
       continue;
     }
 
-    if (arg === "--telemetry-file") {
-      const nextArg = argv[index + 1];
-
-      if (!nextArg || nextArg.startsWith("-")) {
-        return {
-          kind: "error",
-          exitCode: 1,
-          message: "--telemetry-file requires a path.",
-        };
-      }
-
-      telemetryFile = nextArg;
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--telemetry-file=")) {
-      const [, value = ""] = arg.split("=", 2);
-
-      if (value.length === 0) {
-        return {
-          kind: "error",
-          exitCode: 1,
-          message: "--telemetry-file requires a path.",
-        };
-      }
-
-      telemetryFile = value;
-      continue;
-    }
-
     if (arg.startsWith("-")) {
       return {
         kind: "error",
@@ -715,7 +682,6 @@ function parseRunCommand(
     print,
     shouldStart,
     userMessage,
-    telemetryFile,
   };
 }
 
@@ -764,19 +730,6 @@ export function shouldRunNonInteractively(
 export function isDevelopmentMode(): boolean {
   return (
     process.env.NODE_ENV === "development" || process.env.OPENWIKI_DEV === "1"
-  );
-}
-
-/**
- * True for commands that send telemetry and therefore require the one-time
- * disclosure. Only init/update runs emit the single openwiki_run event; chat,
- * auth, and ingest record nothing, so those sessions need no disclosure.
- */
-export function commandEmitsTelemetry(command: CliCommand): boolean {
-  return (
-    command.kind === "run" &&
-    !command.dryRun &&
-    (command.command === "init" || command.command === "update")
   );
 }
 
@@ -913,11 +866,6 @@ export const helpContent: HelpContent = {
       label: "--scheduled",
       description:
         "For ingest only: run scheduled-only ingestion for scheduler-managed runs.",
-    },
-    {
-      label: "--telemetry-file <path>",
-      description:
-        "Write the exact anonymous telemetry payload to a local JSON file.",
     },
     {
       label: "--port <port>",

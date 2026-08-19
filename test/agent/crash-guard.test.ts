@@ -8,16 +8,10 @@ import {
   vi,
 } from "vitest";
 
-// The crash guard's two side effects are mocked so the post-mortem can be asserted
-// without a real telemetry send or a metadata write. describeErrorForTelemetry is
-// left REAL, so these tests also prove a residual crash is classified and
-// fingerprinted (agent_error + its error_detail name) on the way through the guard.
-const recordRunSafe = vi.fn(() => Promise.resolve(undefined));
+// The guard's one side effect on disk is mocked so the post-mortem can be
+// asserted without a real metadata write.
 const persistRunMetadataIfChanged = vi.fn(() => Promise.resolve(true));
 
-vi.mock("../../src/telemetry/record-run-safe.ts", () => ({
-  recordRunSafe: (...args: unknown[]) => recordRunSafe(...args),
-}));
 vi.mock("../../src/agent/utils.ts", () => ({
   persistRunMetadataIfChanged: (...args: unknown[]) =>
     persistRunMetadataIfChanged(...args),
@@ -54,7 +48,6 @@ let exitSpy: MockInstance;
 let stderrSpy: MockInstance;
 
 beforeEach(() => {
-  recordRunSafe.mockClear();
   persistRunMetadataIfChanged.mockClear();
   // Neutralize the two process-level effects so a test never actually exits or
   // spams the reporter.
@@ -83,28 +76,6 @@ describe("active-run registry", () => {
 });
 
 describe("handleFatal", () => {
-  test("records the crash as a classified, fingerprinted failure", async () => {
-    registerActiveRun(ACTIVE);
-
-    await runFatal("unhandledRejection", new TypeError("boom"));
-
-    expect(recordRunSafe).toHaveBeenCalledTimes(1);
-    const [command, options, facts] = recordRunSafe.mock.calls[0] as [
-      string,
-      { outputMode: string },
-      Record<string, unknown>,
-    ];
-    expect(command).toBe("init");
-    expect(options).toEqual({ outputMode: "repository" });
-    // The real describeErrorForTelemetry ran: a residual crash is agent_error with
-    // the thrown error's name as its error_detail fingerprint.
-    expect(facts).toMatchObject({
-      outcome: "failure",
-      errorClass: "agent_error",
-      errorDetail: "TypeError",
-    });
-  });
-
   test("stamps the interrupted run so the next update retries", async () => {
     registerActiveRun(ACTIVE);
 
@@ -148,18 +119,6 @@ describe("handleFatal", () => {
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
-  test("a failing recorder does not skip the stamp or the exit", async () => {
-    registerActiveRun(ACTIVE);
-    recordRunSafe.mockRejectedValueOnce(new Error("telemetry down"));
-
-    await runFatal("unhandledRejection", new Error("boom"));
-
-    // Each side effect is independently guarded: the recorder throwing must not
-    // prevent the interrupted stamp or the exit.
-    expect(persistRunMetadataIfChanged).toHaveBeenCalledTimes(1);
-    expect(exitSpy).toHaveBeenCalledWith(1);
-  });
-
   test("a failing stamp does not prevent the exit", async () => {
     registerActiveRun(ACTIVE);
     persistRunMetadataIfChanged.mockRejectedValueOnce(new Error("disk full"));
@@ -169,12 +128,11 @@ describe("handleFatal", () => {
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
-  test("with no active run it still exits but records nothing", async () => {
+  test("with no active run it still exits but stamps nothing", async () => {
     // A crash before any run registered (or after it cleared): there is nothing to
     // attribute, but the process must still exit rather than limp on.
     await runFatal("uncaughtException", new Error("early boom"));
 
-    expect(recordRunSafe).not.toHaveBeenCalled();
     expect(persistRunMetadataIfChanged).not.toHaveBeenCalled();
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
@@ -190,14 +148,14 @@ describe("handleFatal", () => {
     expect(line).toContain("visible message");
   });
 
-  test("a burst of concurrent fatal signals records the crash exactly once", async () => {
+  test("a burst of concurrent fatal signals stamps the crash exactly once", async () => {
     registerActiveRun(ACTIVE);
 
     // The installer fires `void handleFatal(...)` fire-and-forget, once per escaped
     // rejection, so a burst arrives with no await between calls and every handler runs
     // its synchronous prefix back-to-back. The first must claim the run; every later
     // one must see it already cleared. Before the sync-claim fix each of the 50 read
-    // the still-set run and recorded it, which is the one-crash-261-events bug.
+    // the still-set run and acted on it, stamping the same run 50 times over.
     await Promise.all(
       Array.from({ length: 50 }, (_unused, index) =>
         handleFatal("unhandledRejection", new Error(`boom ${index}`)),
@@ -205,7 +163,6 @@ describe("handleFatal", () => {
     );
     await new Promise((resolve) => setImmediate(resolve));
 
-    expect(recordRunSafe).toHaveBeenCalledTimes(1);
     expect(persistRunMetadataIfChanged).toHaveBeenCalledTimes(1);
     expect(getActiveRun()).toBeUndefined();
   });
@@ -214,11 +171,11 @@ describe("handleFatal", () => {
     registerActiveRun(ACTIVE);
 
     // A rejection can carry any value, not just an Error. The guard must still
-    // record, stamp, and exit, and its stderr line stringifies the raw value
-    // instead of reading a .message/.stack that isn't there.
+    // stamp and exit, and its stderr line stringifies the raw value instead of
+    // reading a .message/.stack that isn't there.
     await runFatal("unhandledRejection", "bare string failure");
 
-    expect(recordRunSafe).toHaveBeenCalledTimes(1);
+    expect(persistRunMetadataIfChanged).toHaveBeenCalledTimes(1);
     expect(exitSpy).toHaveBeenCalledWith(1);
     const line = stderrSpy.mock.calls[0]?.[0] as string;
     expect(line).toContain("bare string failure");
@@ -292,26 +249,26 @@ describe("installCrashGuard", () => {
       expect(onSpy.mock.calls.length).toBe(callsAfterFirst);
 
       // The registered handler routes an escaped rejection through handleFatal, so
-      // with an active run it records and stamps the crash and still exits.
+      // with an active run it stamps the crash and still exits.
       registerActiveRun(ACTIVE);
       handlers.get("unhandledRejection")?.(new Error("escaped"));
-      // The handler is fire-and-forget (`void handleFatal`): its two awaits run on
-      // the microtask queue and only then schedule the exit on setImmediate, so two
-      // macrotask flushes are needed to reach past the recorder to the exit.
+      // The handler is fire-and-forget (`void handleFatal`): its await runs on the
+      // microtask queue and only then schedules the exit on setImmediate, so two
+      // macrotask flushes are needed to reach past the stamp to the exit.
       await new Promise((resolve) => setImmediate(resolve));
       await new Promise((resolve) => setImmediate(resolve));
 
-      expect(recordRunSafe).toHaveBeenCalledTimes(1);
+      expect(persistRunMetadataIfChanged).toHaveBeenCalledTimes(1);
       expect(exitSpy).toHaveBeenCalledWith(1);
 
       // The uncaughtException listener is wired the same way: with a fresh active
-      // run it routes through handleFatal, records the crash, and exits.
+      // run it routes through handleFatal, stamps the crash, and exits.
       registerActiveRun(ACTIVE);
       handlers.get("uncaughtException")?.(new Error("thrown"));
       await new Promise((resolve) => setImmediate(resolve));
       await new Promise((resolve) => setImmediate(resolve));
 
-      expect(recordRunSafe).toHaveBeenCalledTimes(2);
+      expect(persistRunMetadataIfChanged).toHaveBeenCalledTimes(2);
       expect(exitSpy).toHaveBeenCalledTimes(2);
     } finally {
       onSpy.mockRestore();

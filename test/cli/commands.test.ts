@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
-  commandEmitsTelemetry,
   getHelpText,
   parseCommand,
   shouldRunNonInteractively,
@@ -867,81 +866,6 @@ describe("parseCommand — --mode option forms and conflicts", () => {
       mode: "code",
       command: "init",
     });
-  });
-});
-
-describe("parseCommand — --telemetry-file", () => {
-  test("space-separated path is captured alongside the run", () => {
-    expect(
-      parseCommand(["--print", "--telemetry-file", "/tmp/payload.json", "hi"]),
-    ).toMatchObject({
-      kind: "run",
-      telemetryFile: "/tmp/payload.json",
-      userMessage: "hi",
-      print: true,
-    });
-  });
-
-  test("--telemetry-file= equals form is captured", () => {
-    expect(
-      parseCommand(["--init", "--telemetry-file=/tmp/out.json"]),
-    ).toMatchObject({
-      kind: "run",
-      command: "init",
-      telemetryFile: "/tmp/out.json",
-    });
-  });
-
-  test("--telemetry-file with no path is an error", () => {
-    const result = parseCommand(["--telemetry-file"]);
-
-    expect(result.kind).toBe("error");
-    if (result.kind === "error") {
-      expect(result.message).toMatch(/--telemetry-file requires a path/u);
-    }
-  });
-
-  test("--telemetry-file followed by a flag is treated as a missing path", () => {
-    expect(parseCommand(["--telemetry-file", "--init"]).kind).toBe("error");
-  });
-
-  test("an empty --telemetry-file= value is an error", () => {
-    const result = parseCommand(["--telemetry-file="]);
-
-    expect(result.kind).toBe("error");
-    if (result.kind === "error") {
-      expect(result.message).toMatch(/--telemetry-file requires a path/u);
-    }
-  });
-
-  test("telemetry file defaults to null when the option is absent", () => {
-    expect(parseCommand(["--init"])).toMatchObject({ telemetryFile: null });
-  });
-});
-
-describe("commandEmitsTelemetry", () => {
-  test("init and update runs emit the single telemetry event", () => {
-    expect(commandEmitsTelemetry(parseCommand(["--init"]))).toBe(true);
-    expect(commandEmitsTelemetry(parseCommand(["--update"]))).toBe(true);
-  });
-
-  test("a plain chat run emits nothing", () => {
-    expect(commandEmitsTelemetry(parseCommand(["hello there"]))).toBe(false);
-  });
-
-  test("a dry-run init records nothing because the agent never runs", () => {
-    process.env.OPENWIKI_DEV = "1";
-
-    expect(commandEmitsTelemetry(parseCommand(["--dry-run", "--init"]))).toBe(
-      false,
-    );
-  });
-
-  test("ingest, auth, help, and error commands never emit telemetry", () => {
-    expect(commandEmitsTelemetry(parseCommand(["ingest", "all"]))).toBe(false);
-    expect(commandEmitsTelemetry(parseCommand(["auth", "notion"]))).toBe(false);
-    expect(commandEmitsTelemetry(parseCommand(["--help"]))).toBe(false);
-    expect(commandEmitsTelemetry(parseCommand(["--nope"]))).toBe(false);
   });
 });
 

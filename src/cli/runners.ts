@@ -26,10 +26,7 @@ import {
   readOpenWikiOnboardingConfig,
   saveOpenWikiOnboardingConfig,
 } from "../setup/onboarding.js";
-import {
-  withRunTelemetry,
-  type RunTelemetryContext,
-} from "../telemetry/index.js";
+import type { RunTelemetryContext } from "../telemetry/index.js";
 import { exportStaticVisualizer } from "../visualize/static-export.js";
 import { runVisualizeServer } from "../visualize/server.js";
 import { runCopilotWorkspace } from "../copilot/run.js";
@@ -282,45 +279,34 @@ export async function runPrintCommand(
       modelId: command.modelId,
       outputMode: runtimeOutputMode,
       threadId: createOpenWikiThreadId(runtimeCwd),
-      telemetryFile: command.telemetryFile ?? undefined,
       onEvent: handlePrintEvent,
     };
 
-    // withRunTelemetry is the single boundary that records this run, wrapping repo
-    // setup and the connector pull as well as the agent so a throw in either
-    // pre-agent step is recorded rather than only surfaced on stderr below.
     const telemetryContext: RunTelemetryContext = {};
 
-    await withRunTelemetry(
+    if (command.mode === "code") {
+      await ensureCodeModeRepoSetup(runtimeCwd, {
+        createWorkflow: command.command === "init",
+      });
+    }
+
+    // Code-mode connectors (e.g. langsmith) pull their evidence and augment
+    // the agent message before the run, so --print behaves exactly like
+    // interactive.
+    const userMessage =
+      command.mode === "code" && command.command !== "chat"
+        ? await runCodeModeConnectors(
+            runtimeCwd,
+            command.userMessage ?? undefined,
+            handlePrintEvent,
+          )
+        : command.userMessage;
+
+    await runOpenWikiAgent(
       command.command,
-      runOptions,
+      runtimeCwd,
+      { ...runOptions, userMessage },
       telemetryContext,
-      async () => {
-        if (command.mode === "code") {
-          await ensureCodeModeRepoSetup(runtimeCwd, {
-            createWorkflow: command.command === "init",
-          });
-        }
-
-        // Code-mode connectors (e.g. langsmith) pull their evidence and augment
-        // the agent message before the run, so --print behaves exactly like
-        // interactive.
-        const userMessage =
-          command.mode === "code" && command.command !== "chat"
-            ? await runCodeModeConnectors(
-                runtimeCwd,
-                command.userMessage ?? undefined,
-                handlePrintEvent,
-              )
-            : command.userMessage;
-
-        await runOpenWikiAgent(
-          command.command,
-          runtimeCwd,
-          { ...runOptions, userMessage },
-          telemetryContext,
-        );
-      },
     );
 
     const text = output.join("").trim();

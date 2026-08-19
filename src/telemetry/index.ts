@@ -1,14 +1,13 @@
-export { buildRunEvent, recordRun } from "./senders.js";
-export type { RunEventContext } from "./senders.js";
-export { recordRunSafe } from "./record-run-safe.js";
-export { withRunTelemetry } from "./with-run-telemetry.js";
-export type { RunTelemetryContext } from "./with-run-telemetry.js";
-export { firstRunNoticePending } from "./install-id.js";
-export {
-  FIRST_RUN_NOTICE_BODY,
-  FIRST_RUN_NOTICE_OPT_OUT,
-  FIRST_RUN_NOTICE_VERIFY,
-} from "./config.js";
+/**
+ * Run error classification.
+ *
+ * This fork removed OpenWiki's telemetry: nothing here sends, stores, or
+ * identifies anything, and there is no analytics dependency left in the tree.
+ * What remains is the error taxonomy the CLI uses locally to explain a failure —
+ * which stage it happened in, which layer owns it, and what kind of failure it
+ * was — which is why the module keeps its place in the run's control flow.
+ */
+export type { RunTelemetryContext } from "./run-context.js";
 export {
   classifyError,
   describeErrorForTelemetry,
@@ -22,9 +21,7 @@ export type {
   ErrorTelemetry,
 } from "./errors.js";
 export { deriveOwner, normalizeErrorDetail } from "./taxonomy.js";
-export { isCiEnvironment, isTelemetryDisabled } from "./gates.js";
 export type {
-  RunTelemetry,
   TelemetryErrorClass,
   TelemetryErrorOwner,
   TelemetryErrorStage,

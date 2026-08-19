@@ -76,7 +76,7 @@ const SAFE_ERROR_IDENTIFIER = /^[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)*$/u;
  * Whether `value` is a bare code identifier safe to emit: a string of at most 64
  * characters matching {@link SAFE_ERROR_IDENTIFIER}. The length bound caps how much a
  * single name can weigh and closes the door on a giant synthesized name. The one gate
- * every error identifier passes through before it can leave the process, whether it
+ * every error identifier passes through before it can be recorded, whether it
  * is read from `.name`, `constructor.name`, or the residual `agent_error` detail.
  *
  * @param value - The candidate identifier, or any non-string value.

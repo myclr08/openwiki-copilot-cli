@@ -3,16 +3,7 @@ import React from "react";
 import { render } from "ink";
 import { installCrashGuard } from "../agent/crash-guard.js";
 import { loadOpenWikiEnv } from "../config/env.js";
-import { firstRunNoticePending } from "../telemetry/index.js";
-import {
-  commandEmitsTelemetry,
-  parseCommand,
-  shouldRunNonInteractively,
-} from "./commands.js";
-import {
-  FirstRunNotice,
-  renderFirstRunNoticeText,
-} from "./components/first-run-notice.js";
+import { parseCommand, shouldRunNonInteractively } from "./commands.js";
 import { shouldPrintStartupError } from "./run-mode.js";
 import { resolveStartupCommand } from "./startup.js";
 import { App } from "./app/app.js";
@@ -49,14 +40,6 @@ const command = await resolveStartupCommand(parsedCommand, {
   isStdinTTY: Boolean(process.stdin.isTTY),
 });
 
-// Decide once, before any event is sent, whether this is the first run on this
-// machine (mints the install id). False when suppressed (opt-out or CI) or after
-// the first run. How it is shown depends on the render path below.
-let showFirstRunNotice = false;
-if (commandEmitsTelemetry(command)) {
-  showFirstRunNotice = await firstRunNoticePending();
-}
-
 if (command.kind === "run" && command.languageWarning) {
   // stderr keeps piped stdout clean while still warning about an ignored locale.
   process.stderr.write(`${command.languageWarning}\n`);
@@ -78,19 +61,8 @@ if (command.kind === "auth") {
   process.stderr.write(`${command.message}\n`);
   process.exitCode = command.exitCode;
 } else if (shouldRunNonInteractively(command, process.stdin.isTTY === true)) {
-  // Non-TTY / print mode: framed text on stderr so piped stdout stays clean;
-  // gray only when stderr is a real terminal.
-  if (showFirstRunNotice) {
-    console.error(renderFirstRunNoticeText(process.stderr.isTTY === true));
-  }
+  // Non-TTY / print mode: framed text on stderr so piped stdout stays clean.
   await runPrintCommand(command);
 } else {
-  // Interactive TUI: render the notice as a box above the app so it matches
-  // the rest of the interface.
-  render(
-    <>
-      {showFirstRunNotice ? <FirstRunNotice /> : null}
-      <App command={command} />
-    </>,
-  );
+  render(<App command={command} />);
 }
