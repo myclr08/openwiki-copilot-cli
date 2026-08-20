@@ -13,6 +13,7 @@ import {
   runIngestCommand,
   runNgrokCommand,
   runPrintCommand,
+  runTddCommand,
   runVisualizeCommand,
   runWorkspaceCommand,
 } from "./runners.js";
@@ -31,7 +32,8 @@ if (
   parsedCommand.kind === "cron" ||
   parsedCommand.kind === "ingest" ||
   parsedCommand.kind === "ngrok" ||
-  parsedCommand.kind === "workspace"
+  parsedCommand.kind === "workspace" ||
+  parsedCommand.kind === "tdd"
 ) {
   await loadOpenWikiEnv();
 }
@@ -58,6 +60,8 @@ if (command.kind === "auth") {
   await runVisualizeCommand(command);
 } else if (command.kind === "workspace") {
   await runWorkspaceCommand(command);
+} else if (command.kind === "tdd") {
+  await runTddCommand(command);
 } else if (shouldPrintStartupError(argv, parsedCommand, command)) {
   process.stderr.write(`${command.message}\n`);
   process.exitCode = command.exitCode;

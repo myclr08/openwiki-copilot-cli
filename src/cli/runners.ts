@@ -31,7 +31,9 @@ import { exportStaticVisualizer } from "../visualize/static-export.js";
 import { runVisualizeServer } from "../visualize/server.js";
 import { runCopilotWorkspace } from "../copilot/run.js";
 import type { RepoRunResult } from "../copilot/types.js";
+import { runTdd } from "../copilot/tdd/run.js";
 import type { WorkspaceCliCommand } from "./workspace-command.js";
+import type { TddCliCommand } from "./tdd-command.js";
 import type { CliCommand } from "./commands.js";
 import { isDebugMode } from "./debug.js";
 import { getAuthFix, getAuthFixSteps } from "./diagnostics/auth-fix.js";
@@ -413,6 +415,49 @@ export async function runWorkspaceCommand(
     )
       ? 1
       : 0;
+  } catch (error) {
+    process.stderr.write(`${getErrorMessage(error)}\n`);
+    process.exitCode = 1;
+  }
+}
+
+/**
+ * Runs `openwiki tdd`: line-oriented output like the workspace runner, plus
+ * the interview on the real terminal. Exit code 1 on any failure; validation
+ * warnings do not fail the run — judging the document is the developer's
+ * call.
+ */
+export async function runTddCommand(command: TddCliCommand): Promise<void> {
+  try {
+    const result = await runTdd({
+      workspaceRoot: command.workspaceRoot,
+      jiraKey: command.jiraKey,
+      templatePath: command.templatePath,
+      modelId: command.modelId,
+      outputFile: command.outputFile,
+      onEvent: (event) => {
+        if (event.type === "text") {
+          process.stdout.write(`${event.text.trim()}\n`);
+        }
+      },
+    });
+
+    process.stdout.write(`\nTDD hazır: ${result.documentPath}\n`);
+    process.stdout.write(
+      "İçeriği kopyalayıp Confluence'a yapıştırabilirsiniz.\n",
+    );
+
+    if (result.pendingClarifications > 0) {
+      process.stdout.write(
+        `${result.pendingClarifications} adet [Netleştirilecek] işareti var.\n`,
+      );
+    }
+
+    for (const warning of result.warnings) {
+      process.stdout.write(`Uyarı: ${warning}\n`);
+    }
+
+    process.exitCode = 0;
   } catch (error) {
     process.stderr.write(`${getErrorMessage(error)}\n`);
     process.exitCode = 1;

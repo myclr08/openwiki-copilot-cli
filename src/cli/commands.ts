@@ -11,6 +11,7 @@ import {
   parseWorkspaceCommand,
   type WorkspaceCliCommand,
 } from "./workspace-command.js";
+import { parseTddCommand, type TddCliCommand } from "./tdd-command.js";
 
 export type HelpRow = {
   label: string;
@@ -69,6 +70,7 @@ export type CliCommand =
       target: CronTarget | null;
     }
   | WorkspaceCliCommand
+  | TddCliCommand
   | { kind: "help"; exitCode: 0 }
   | {
       kind: "run";
@@ -223,6 +225,10 @@ export function parseCommand(argv: string[]): CliCommand {
 
   if (argv[0] === "workspace") {
     return parseWorkspaceCommand(argv.slice(1));
+  }
+
+  if (argv[0] === "tdd") {
+    return parseTddCommand(argv.slice(1));
   }
 
   if (argv[0] === "visualize") {
@@ -757,6 +763,7 @@ export const helpContent: HelpContent = {
     "openwiki ngrok start [url] [--port <port>]",
     "openwiki visualize [path] [--port <port>] [--no-open] [--export <dir>]",
     "openwiki workspace <folder> [--init|--update] [--output <dir>] [--only <names>] [--model <id>]",
+    "openwiki tdd <folder> [--jira <KEY>] [--template <file>] [--model <id>] [--output <file>]",
   ],
   commands: [
     {
@@ -826,6 +833,11 @@ export const helpContent: HelpContent = {
       label: "openwiki workspace <folder>",
       description:
         "Document every repository in a folder using GitHub Copilot CLI, writing one central wiki. Requires the copilot CLI on PATH.",
+    },
+    {
+      label: "openwiki tdd <folder>",
+      description:
+        "Fill the company technical design template with Copilot CLI: reads the workspace wiki and an optional Jira record, interviews the developer in the terminal, writes Confluence-ready Markdown.",
     },
   ],
   options: [
@@ -921,6 +933,7 @@ export const helpContent: HelpContent = {
     "openwiki workspace ~/repos --update",
     "openwiki workspace ~/repos --output ~/wiki --model claude-sonnet-4.6",
     "openwiki workspace ~/repos --only api-service,web-app",
+    "openwiki tdd ~/repos --jira DNZ-1111",
   ],
   developmentExamples: ["openwiki --dry-run"],
 };
