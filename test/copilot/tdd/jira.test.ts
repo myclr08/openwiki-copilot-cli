@@ -43,6 +43,12 @@ const ISSUE = {
         mimeType: "image/png",
         content: "",
       },
+      {
+        filename: "bozuk.txt",
+        size: 10,
+        mimeType: "text/plain",
+        content: "",
+      },
     ],
     issuelinks: [
       {
@@ -89,6 +95,12 @@ beforeAll(async () => {
       return;
     }
 
+    if (request.url === "/attachment/bozuk.txt") {
+      response.statusCode = 500;
+      response.end("Server error");
+      return;
+    }
+
     response.statusCode = 404;
     response.end("{}");
   });
@@ -96,6 +108,7 @@ beforeAll(async () => {
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   ISSUE.fields.attachment[0].content = `${baseUrl}/attachment/analiz.txt`;
   ISSUE.fields.attachment[1].content = `${baseUrl}/attachment/akis-diyagrami.png`;
+  ISSUE.fields.attachment[2].content = `${baseUrl}/attachment/bozuk.txt`;
 });
 
 afterAll(() => {
@@ -152,5 +165,16 @@ describe("fetchJiraEvidence", () => {
     await expect(fetchJiraEvidence("DNZ-404", jiraEnv())).rejects.toThrow(
       /HTTP 404.*DNZ-404/su,
     );
+  });
+
+  test("isolates attachment failure: failed download does not fail the whole fetch", async () => {
+    const evidence = await fetchJiraEvidence("DNZ-1111", jiraEnv());
+
+    // Should include the failed attachment in the Ekler section marked as skipped
+    expect(evidence.markdown).toContain("bozuk.txt");
+    expect(evidence.markdown).toContain("indirilemedi/atlandı");
+    // Failed attachment should NOT be in unreadableAttachments (skipped ≠ unreadable)
+    expect(evidence.unreadableAttachments).toEqual(["akis-diyagrami.png"]);
+    expect(evidence.unreadableAttachments).not.toContain("bozuk.txt");
   });
 });
