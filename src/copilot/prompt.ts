@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { OpenWikiCommand } from "../agent/types.js";
-import type { WorkspaceRepo } from "./types.js";
+import type { IndexedRepo, WorkspaceRepo } from "./types.js";
 
 /** Inputs for one repository's Copilot prompt. */
 export interface RepoPromptOptions {
@@ -28,8 +28,12 @@ export interface IndexPromptOptions {
 
   language?: string | null;
 
-  /** Repositories that produced a wiki, in index order. */
-  repos: WorkspaceRepo[];
+  /**
+   * Every repository the wiki documents, in index order. This is the complete
+   * set, not the subset this run touched: the index is rewritten whole, so a
+   * partial list would silently drop the repositories left out of it.
+   */
+  repos: IndexedRepo[];
 
   /** Absolute path to the workspace folder being documented. */
   workspaceRoot: string;
@@ -146,12 +150,14 @@ function buildUpdateWorkflow(
  */
 export function buildIndexPrompt(options: IndexPromptOptions): string {
   const listing = options.repos
-    .map((repo) => `- ${repo.slug} — source at ${repo.path}`)
+    .map((repo) =>
+      repo.path ? `- ${repo.slug} — source at ${repo.path}` : `- ${repo.slug}`,
+    )
     .join("\n");
 
   const sections = [
     `You are OpenWiki. Write the top-level index for a wiki covering every repository in ${options.workspaceRoot}.`,
-    `Your working directory is the wiki root. It contains a repos/ directory with one wiki per repository:\n${listing}`,
+    `Your working directory is the wiki root. It contains a repos/ directory with one wiki per repository. This list is complete, and the index must cover every entry on it — including any whose wiki was written by an earlier run:\n${listing}`,
     `Task:
 1. Read repos/<slug>/index.md and repos/<slug>/overview.md for each repository to learn what it is.
 2. Write index.md in your working directory. It must:

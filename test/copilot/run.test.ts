@@ -316,6 +316,70 @@ describe("runCopilotWorkspace", () => {
     expect(result.results[0]?.dirtyPaths).toContain("stray.md");
   });
 
+  test("keeps every documented repository in the index when the run is narrowed", async () => {
+    const root = await createWorkspace(["api-service", "web-app"]);
+    const stub = await createStubCopilot({
+      events: [assistantMessage("Documented.")],
+      files: { "index.md": ROOT_INDEX, "overview.md": PAGE },
+    });
+    useStub(stub.binary);
+
+    await runCopilotWorkspace({ command: "init", workspaceRoot: root });
+    await runCopilotWorkspace({
+      command: "init",
+      only: ["web-app"],
+      workspaceRoot: root,
+    });
+
+    // The index page is rewritten whole. Prompting it with only the repository
+    // this run touched is what erased the others from the index.
+    const indexPrompt = (await stub.invocations()).at(-1)?.args.join(" ") ?? "";
+
+    expect(indexPrompt).toContain("api-service");
+    expect(indexPrompt).toContain("web-app");
+  });
+
+  test("keeps a repository in the index after its own run fails", async () => {
+    const root = await createWorkspace(["api-service", "web-app"]);
+    const ok = await createStubCopilot({
+      events: [assistantMessage("Documented.")],
+      files: { "index.md": ROOT_INDEX, "overview.md": PAGE },
+    });
+    useStub(ok.binary);
+    await runCopilotWorkspace({ command: "init", workspaceRoot: root });
+
+    const failing = await createStubCopilot({
+      events: [assistantMessage("Documented.")],
+      failFor: `${path.sep}web-app`,
+      files: { "index.md": ROOT_INDEX, "overview.md": PAGE },
+    });
+    useStub(failing.binary);
+    await runCopilotWorkspace({ command: "init", workspaceRoot: root });
+
+    const indexPrompt =
+      (await failing.invocations()).at(-1)?.args.join(" ") ?? "";
+
+    expect(indexPrompt).toContain("api-service");
+    expect(indexPrompt).toContain("web-app");
+  });
+
+  test("keeps a wiki section whose source repository is gone", async () => {
+    const root = await createWorkspace(["api-service", "web-app"]);
+    const stub = await createStubCopilot({
+      events: [assistantMessage("Documented.")],
+      files: { "index.md": ROOT_INDEX, "overview.md": PAGE },
+    });
+    useStub(stub.binary);
+
+    await runCopilotWorkspace({ command: "init", workspaceRoot: root });
+    await rm(path.join(root, "web-app"), { force: true, recursive: true });
+    await runCopilotWorkspace({ command: "init", workspaceRoot: root });
+
+    const indexPrompt = (await stub.invocations()).at(-1)?.args.join(" ") ?? "";
+
+    expect(indexPrompt).toContain("web-app");
+  });
+
   test("limits the run to the requested repositories", async () => {
     const root = await createWorkspace(["api-service", "web-app"]);
     const stub = await createStubCopilot({

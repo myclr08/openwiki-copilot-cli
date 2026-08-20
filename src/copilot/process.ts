@@ -5,6 +5,7 @@ import {
   resolveCopilotBinary,
   resolveCopilotTimeoutMs,
 } from "./config.js";
+import type { CopilotLauncher } from "./detect.js";
 import { CopilotEventStream } from "./events.js";
 
 /** How long a killed process is given to exit before SIGKILL. */
@@ -22,6 +23,12 @@ export interface CopilotInvocation {
   cwd: string;
 
   env?: NodeJS.ProcessEnv;
+
+  /**
+   * How to start Copilot, as resolved by the preflight. Defaults to spawning
+   * the configured binary directly, which is what a POSIX install needs.
+   */
+  launcher?: CopilotLauncher;
 
   onEvent?: (event: OpenWikiRunEvent) => void;
 
@@ -103,16 +110,23 @@ export async function runCopilot(
   invocation: CopilotInvocation,
 ): Promise<CopilotInvocationResult> {
   const env = invocation.env ?? process.env;
-  const binary = resolveCopilotBinary(env);
+  const launcher = invocation.launcher ?? {
+    command: resolveCopilotBinary(env),
+    prefixArgs: [],
+  };
   const timeoutMs = invocation.timeoutMs ?? resolveCopilotTimeoutMs(env);
   const stream = new CopilotEventStream();
 
   return await new Promise<CopilotInvocationResult>((resolve, reject) => {
-    const child = spawn(binary, buildCopilotArgs(invocation, env), {
-      cwd: invocation.cwd,
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const child = spawn(
+      launcher.command,
+      [...launcher.prefixArgs, ...buildCopilotArgs(invocation, env)],
+      {
+        cwd: invocation.cwd,
+        env,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
 
     let stdoutBuffer = "";
     let stderr = "";

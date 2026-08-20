@@ -1,4 +1,4 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import type {
   OpenWikiCommand,
@@ -11,6 +11,7 @@ import {
   REPOS_DIRECTORY,
 } from "./config.js";
 import { ensureCopilotAvailable } from "./detect.js";
+import type { CopilotLauncher } from "./detect.js";
 import { getDirtyPaths, getGitHead, newlyDirtyPaths } from "./git.js";
 import {
   canSkipUpdate,
@@ -22,6 +23,7 @@ import { buildIndexPrompt, buildRepoPrompt } from "./prompt.js";
 import { runCopilot } from "./process.js";
 import { discoverRepos } from "./workspace.js";
 import type {
+  IndexedRepo,
   RepoRunResult,
   WorkspaceRepo,
   WorkspaceRunResult,
@@ -77,10 +79,10 @@ export async function runCopilotWorkspace(
   const wikiRoot = resolveWikiRoot(workspaceRoot, options.outputDir);
   const model = options.modelId?.trim() || DEFAULT_COPILOT_CLI_MODEL;
 
-  const availability = await ensureCopilotAvailable();
+  const { launcher, version } = await ensureCopilotAvailable();
   emit(options, {
     type: "debug",
-    message: `copilot.binary=${availability.binary} version=${availability.version}`,
+    message: `copilot.command=${launcher.command} version=${version}`,
   });
 
   const repos = await discoverRepos(workspaceRoot, {
@@ -110,6 +112,7 @@ export async function runCopilotWorkspace(
     results.push(
       await runRepo({
         instructions,
+        launcher,
         model,
         options,
         repo,
@@ -118,14 +121,16 @@ export async function runCopilotWorkspace(
     );
   }
 
-  const documented = results.filter((result) => result.outcome !== "failed");
   const indexWritten =
     (await shouldWriteIndex(results, wikiRoot)) && !options.signal?.aborted
       ? await writeCrossRepoIndex({
           instructions,
           model,
           options,
-          repos: documented.map((result) => result.repo),
+          // Every repository the wiki documents, not just this run's — see
+          // collectIndexedRepos.
+          launcher,
+          repos: await collectIndexedRepos(wikiRoot, workspaceRoot),
           wikiRoot,
           workspaceRoot,
         })
@@ -137,6 +142,7 @@ export async function runCopilotWorkspace(
 /** Inputs shared by the per-repository step. */
 interface RepoStepOptions {
   instructions: string | undefined;
+  launcher: CopilotLauncher;
   model: string;
   options: WorkspaceRunOptions;
   repo: WorkspaceRepo;
@@ -146,6 +152,7 @@ interface RepoStepOptions {
 /** Documents one repository, returning its outcome instead of throwing. */
 async function runRepo({
   instructions,
+  launcher,
   model,
   options,
   repo,
@@ -176,6 +183,7 @@ async function runRepo({
     const result = await runCopilot({
       addDirs: [repo.path],
       cwd: wikiDir,
+      launcher,
       model,
       prompt: buildRepoPrompt({
         command: options.command,
@@ -234,9 +242,10 @@ async function runRepo({
 /** Inputs for the cross-repository index step. */
 interface IndexStepOptions {
   instructions: string | undefined;
+  launcher: CopilotLauncher;
   model: string;
   options: WorkspaceRunOptions;
-  repos: WorkspaceRepo[];
+  repos: IndexedRepo[];
   wikiRoot: string;
   workspaceRoot: string;
 }
@@ -252,6 +261,7 @@ interface IndexStepOptions {
  */
 async function writeCrossRepoIndex({
   instructions,
+  launcher,
   model,
   options,
   repos,
@@ -263,6 +273,7 @@ async function writeCrossRepoIndex({
   try {
     const result = await runCopilot({
       cwd: wikiRoot,
+      launcher,
       model,
       prompt: buildIndexPrompt({
         repos,
@@ -324,6 +335,62 @@ async function resolvePreviousHead(
   const metadata = await readRepoMetadata(wikiDir);
 
   return metadata?.gitHead ? { previousGitHead: metadata.gitHead } : {};
+}
+
+/**
+ * Lists every repository the wiki documents, for the index prompt.
+ *
+ * The set is read from the wiki, not from this run's results. The index page is
+ * rewritten whole, so handing over only the repositories this run touched makes
+ * a narrowed run — `--only`, or a re-run after one repository failed — erase
+ * every other repository from the index.
+ *
+ * Source paths are recovered by rediscovering the workspace, so a section whose
+ * checkout is gone still keeps its place in the index, just without a path.
+ */
+async function collectIndexedRepos(
+  wikiRoot: string,
+  workspaceRoot: string,
+): Promise<IndexedRepo[]> {
+  const documentedSlugs = await readDocumentedSlugs(wikiRoot);
+
+  if (documentedSlugs.length === 0) return [];
+
+  const sourcePaths = new Map<string, string>();
+
+  try {
+    for (const repo of await discoverRepos(workspaceRoot, {
+      excludeDir: wikiRoot,
+    })) {
+      sourcePaths.set(repo.slug, repo.path);
+    }
+  } catch {
+    // Rediscovery only enriches the listing with source paths. A workspace that
+    // has moved or become unreadable must not stop the index from covering the
+    // wikis that are already on disk.
+  }
+
+  return documentedSlugs.map((slug) => {
+    const path = sourcePaths.get(slug);
+
+    return path ? { path, slug } : { slug };
+  });
+}
+
+/** Wiki section names under `repos/`, sorted, for a stable index order. */
+async function readDocumentedSlugs(wikiRoot: string): Promise<string[]> {
+  try {
+    const entries = await readdir(path.join(wikiRoot, REPOS_DIRECTORY), {
+      withFileTypes: true,
+    });
+
+    return entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort((left, right) => left.localeCompare(right));
+  } catch {
+    return [];
+  }
 }
 
 /**

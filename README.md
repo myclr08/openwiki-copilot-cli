@@ -149,9 +149,17 @@ copilot login
 
 Copilot CLI owns its own authentication, so there is no OpenWiki provider or API key to configure for this mode — `openwiki auth` and `OPENWIKI_PROVIDER` are not involved.
 
+On Windows, `copilot` on `PATH` is an npm shim (`copilot.cmd`), and Node cannot start a `.cmd` directly — it reports `EINVAL`. OpenWiki resolves the shim to the real executable inside the npm package by itself, so this normally needs no attention. If it cannot, point the variable below at the executable:
+
+```
+%APPDATA%\npm\node_modules\@github\copilot-win32-x64\copilot.exe
+```
+
+These variables can also live in `~/.openwiki/.env`, which this mode reads on startup, so they need not be exported in every shell.
+
 | Variable                      | Purpose                                                                                                                                    |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `OPENWIKI_COPILOT_CLI_BIN`    | Path to the `copilot` executable when it is not on `PATH`.                                                                                 |
+| `OPENWIKI_COPILOT_CLI_BIN`    | Path to the `copilot` executable, when it is not on `PATH` or the one on `PATH` is a shim that cannot be started.                          |
 | `OPENWIKI_COPILOT_TIMEOUT_MS` | Per-repository time budget. Defaults to one hour.                                                                                          |
 | `OPENWIKI_COPILOT_GITHUB_MCP` | Set to `1` to keep Copilot's built-in GitHub MCP server enabled. It is disabled by default: documenting local code needs no network tools. |
 

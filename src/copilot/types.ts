@@ -18,6 +18,21 @@ export interface WorkspaceRepo {
   slug: string;
 }
 
+/**
+ * A repository the cross-repository index must cover.
+ *
+ * Broader than {@link WorkspaceRepo}: the index spans every repository the wiki
+ * already documents, including ones this run did not touch, and a wiki section
+ * can outlive its source checkout — so the source path is not always knowable.
+ */
+export interface IndexedRepo {
+  /** Absolute path to the source repository, when it is still present. */
+  path?: string;
+
+  /** The repository's wiki section name. */
+  slug: string;
+}
+
 /** How one repository's run ended. */
 export type RepoRunOutcome = "failed" | "skipped" | "succeeded";
 

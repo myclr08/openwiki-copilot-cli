@@ -30,7 +30,8 @@ if (
   parsedCommand.kind === "auth" ||
   parsedCommand.kind === "cron" ||
   parsedCommand.kind === "ingest" ||
-  parsedCommand.kind === "ngrok"
+  parsedCommand.kind === "ngrok" ||
+  parsedCommand.kind === "workspace"
 ) {
   await loadOpenWikiEnv();
 }
