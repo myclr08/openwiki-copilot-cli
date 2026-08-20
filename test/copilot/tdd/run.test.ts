@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
@@ -8,8 +8,21 @@ import {
   BUNDLED_TDD_TEMPLATE,
   parseTddTemplate,
 } from "../../../src/copilot/tdd/template.ts";
+import {
+  JIRA_BASE_URL_ENV_KEY,
+  JIRA_TOKEN_ENV_KEY,
+} from "../../../src/copilot/tdd/jira.ts";
 import { runTdd } from "../../../src/copilot/tdd/run.ts";
 import { assistantMessage, createStubCopilot } from "../stub-copilot.ts";
+
+/** Local YYYY-MM-DD, matching the adhoc run directory's date source. */
+function localDateStamp(now = new Date()): string {
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
 
 const QUESTIONS_JSON = JSON.stringify([
   { section: "1. MVP Temel Kapsamı", question: "Hangi problem çözülüyor?" },
@@ -129,11 +142,7 @@ describe("runTdd", () => {
   test("resumes: existing questions.json skips the analysis pass", async () => {
     const root = await createWorkspaceWithWiki();
     const stub = await useStub({ "tdd.md": VALID_TDD });
-    const runDir = path.join(
-      root,
-      "tdd",
-      `adhoc-${new Date().toISOString().slice(0, 10)}`,
-    );
+    const runDir = path.join(root, "tdd", `adhoc-${localDateStamp()}`);
     await mkdir(runDir, { recursive: true });
     await writeFile(
       path.join(runDir, "questions.json"),
@@ -147,6 +156,56 @@ describe("runTdd", () => {
     // Only the writing pass ran; brief was not re-asked (no leading "" line
     // consumed: the scripted io's first line answered the interview).
     expect(await stub.invocations()).toHaveLength(1);
+  });
+
+  test("a skipped brief is not re-asked, and its emptiness excludes it from the analysis prompt", async () => {
+    const root = await createWorkspaceWithWiki();
+    const runDir = path.join(root, "tdd", `adhoc-${localDateStamp()}`);
+    await mkdir(runDir, { recursive: true });
+    await writeFile(path.join(runDir, "brief.md"), "", "utf8");
+    const stub = await useStub({
+      "questions.json": QUESTIONS_JSON,
+      "tdd.md": VALID_TDD,
+    });
+
+    const input = new PassThrough();
+    input.end("Mobil QR ödeme.\n");
+
+    await runTdd({
+      workspaceRoot: root,
+      io: { input, output: new PassThrough() },
+    });
+
+    // The existing (empty) brief.md meant askBrief was never called, so the
+    // scripted line answered the interview's question rather than being
+    // consumed (and discarded) as the brief.
+    const answers = await readFile(path.join(runDir, "answers.md"), "utf8");
+    expect(answers).toContain("Mobil QR ödeme.");
+    expect(answers).not.toContain("geç");
+
+    const invocations = await stub.invocations();
+    const analysisPrompt = invocations[0].args.join("\n");
+    expect(analysisPrompt).not.toContain("brief.md");
+  });
+
+  test("a failed Jira fetch leaves no run directory behind", async () => {
+    const root = await createWorkspaceWithWiki();
+    const stub = await useStub({});
+    const jiraKey = "DNZ-1";
+    const env = { ...process.env, [COPILOT_CLI_BIN_ENV_KEY]: stub.binary };
+    delete env[JIRA_BASE_URL_ENV_KEY];
+    delete env[JIRA_TOKEN_ENV_KEY];
+
+    await expect(
+      runTdd({
+        workspaceRoot: root,
+        jiraKey,
+        io: scriptedIo([]),
+        env,
+      }),
+    ).rejects.toThrow(/Jira access needs/u);
+
+    await expect(stat(path.join(root, "tdd", jiraKey))).rejects.toThrow();
   });
 
   test("reports validation warnings without failing the run", async () => {

@@ -72,20 +72,22 @@ export async function runTdd(options: TddRunOptions): Promise<TddRunResult> {
   );
 
   const jiraKey = options.jiraKey?.trim() || undefined;
-  const runName = jiraKey ?? `adhoc-${new Date().toISOString().slice(0, 10)}`;
+  const runName = jiraKey ?? `adhoc-${localDateStamp()}`;
   const runDir = path.join(workspaceRoot, "tdd", runName);
-  await mkdir(runDir, { recursive: true });
 
   const emit = (text: string) => options.onEvent?.({ type: "text", text });
 
   // 1. Jira evidence. Always refetched when a key is given: fresh evidence
-  // beats a stale copy, and the fetch is cheap next to a Copilot pass.
+  // beats a stale copy, and the fetch is cheap next to a Copilot pass. Runs
+  // before the run directory is created, so a failed fetch (e.g. missing
+  // credentials) leaves no empty directory behind.
   let unreadableAttachments: string[] = [];
+  let jiraMarkdown: string | undefined;
 
   if (jiraKey) {
     emit(`Jira ${jiraKey} okunuyor…`);
     const evidence = await fetchJiraEvidence(jiraKey, env);
-    await writeFile(path.join(runDir, "jira.md"), evidence.markdown, "utf8");
+    jiraMarkdown = evidence.markdown;
     unreadableAttachments = evidence.unreadableAttachments;
 
     if (unreadableAttachments.length > 0) {
@@ -95,19 +97,24 @@ export async function runTdd(options: TddRunOptions): Promise<TddRunResult> {
     }
   }
 
-  // 2. Brief — asked once; an existing brief.md (a resumed run) is kept.
+  await mkdir(runDir, { recursive: true });
+
+  if (jiraMarkdown !== undefined) {
+    await writeFile(path.join(runDir, "jira.md"), jiraMarkdown, "utf8");
+  }
+
+  // 2. Brief — asked once; an existing brief.md (a resumed run) is kept. A
+  // skipped brief still writes an empty file, so the prompt is not asked
+  // again on the next run.
   const briefFile = path.join(runDir, "brief.md");
 
   if (!(await exists(briefFile))) {
     const brief = await askBrief(options.io);
-
-    if (brief) {
-      await writeFile(briefFile, `${brief}\n`, "utf8");
-    }
+    await writeFile(briefFile, brief ? `${brief}\n` : "", "utf8");
   }
 
   const hasJira = await exists(path.join(runDir, "jira.md"));
-  const hasBrief = await exists(briefFile);
+  const hasBrief = (await readFile(briefFile, "utf8")).trim().length > 0;
 
   // 3. Analysis pass → questions.json. An existing file (a resumed run)
   // skips the pass entirely.
@@ -214,6 +221,20 @@ function formatToday(now = new Date()): string {
   const month = String(now.getMonth() + 1).padStart(2, "0");
 
   return `${day}/${month}/${now.getFullYear()}`;
+}
+
+/**
+ * Today as local YYYY-MM-DD, for the adhoc run directory name. Must agree
+ * with `formatToday()`'s local date source — otherwise a run started and
+ * resumed on the same local day can land in different directories whenever
+ * local time and UTC disagree on which day it is.
+ */
+function localDateStamp(now = new Date()): string {
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 /** Whether a path exists. */

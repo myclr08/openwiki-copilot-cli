@@ -31,6 +31,7 @@ class LineReader {
   private readonly waiters: ((line: string) => void)[] = [];
   private closed = false;
   private readonly readline: Interface;
+  private readonly handleError: () => void;
 
   constructor(private readonly io: InterviewIo) {
     this.readline = createInterface({ input: io.input });
@@ -43,13 +44,13 @@ class LineReader {
       this.closed = true;
       for (const waiter of this.waiters.splice(0)) waiter("");
     });
-    const handleError = () => {
+    this.handleError = () => {
       this.closed = true;
       for (const waiter of this.waiters.splice(0)) waiter("");
       this.readline.close();
     };
-    this.io.input.on("error", handleError);
-    this.readline.on("error", handleError);
+    this.io.input.on("error", this.handleError);
+    this.readline.on("error", this.handleError);
   }
 
   /** Writes the prompt and resolves with the next input line ("" after EOF). */
@@ -62,6 +63,7 @@ class LineReader {
   }
 
   close(): void {
+    this.io.input.off("error", this.handleError);
     this.readline.close();
   }
 }
