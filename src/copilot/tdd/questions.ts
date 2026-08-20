@@ -126,32 +126,10 @@ export function buildWritingPrompt(options: WritingPromptOptions): string {
 }
 
 /**
- * Parses the analysis pass's question list, tolerantly: model output may
- * fence the JSON, wrap it in prose, or include broken entries. Broken
- * entries are dropped; a reply with no usable questions throws, carrying an
- * excerpt of the raw output so the failure is debuggable.
+ * Validates and converts parsed entries to TddQuestion objects, shared by both
+ * fenced and fallback parsing paths.
  */
-export function parseQuestions(raw: string): TddQuestion[] {
-  const stripped = raw.replace(/```[a-z]*\n?/giu, "");
-  const start = stripped.indexOf("[");
-  const end = stripped.lastIndexOf("]");
-
-  if (start === -1 || end <= start) {
-    throw new Error(
-      `The analysis pass produced no question list. Raw output:\n${raw.slice(0, 400)}`,
-    );
-  }
-
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(stripped.slice(start, end + 1));
-  } catch {
-    throw new Error(
-      `The analysis pass's question list is not valid JSON. Raw output:\n${raw.slice(0, 400)}`,
-    );
-  }
-
+function validateAndCapQuestions(parsed: unknown, raw: string): TddQuestion[] {
   if (!Array.isArray(parsed)) {
     throw new Error("The analysis pass's question list is not a JSON array.");
   }
@@ -181,4 +159,52 @@ export function parseQuestions(raw: string): TddQuestion[] {
   }
 
   return questions.slice(0, MAX_QUESTIONS);
+}
+
+/**
+ * Parses the analysis pass's question list, tolerantly: model output may
+ * fence the JSON, wrap it in prose, or include broken entries. Broken
+ * entries are dropped; a reply with no usable questions throws, carrying an
+ * excerpt of the raw output so the failure is debuggable.
+ */
+export function parseQuestions(raw: string): TddQuestion[] {
+  // First, try to extract fenced code blocks
+  const fenceRegex = /```[a-z]*\n?([\s\S]*?)```/giu;
+  let match = fenceRegex.exec(raw);
+
+  while (match !== null) {
+    const blockContent = match[1].trim();
+    if (blockContent.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(blockContent) as unknown;
+        return validateAndCapQuestions(parsed, raw);
+      } catch {
+        // This fenced block didn't work, try the next one or fall back
+      }
+    }
+    match = fenceRegex.exec(raw);
+  }
+
+  // Fallback: strip all fences and look for first [ to last ]
+  const stripped = raw.replace(/```[a-z]*\n?/giu, "");
+  const start = stripped.indexOf("[");
+  const end = stripped.lastIndexOf("]");
+
+  if (start === -1 || end <= start) {
+    throw new Error(
+      `The analysis pass produced no question list. Raw output:\n${raw.slice(0, 400)}`,
+    );
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(stripped.slice(start, end + 1));
+  } catch {
+    throw new Error(
+      `The analysis pass's question list is not valid JSON. Raw output:\n${raw.slice(0, 400)}`,
+    );
+  }
+
+  return validateAndCapQuestions(parsed, raw);
 }

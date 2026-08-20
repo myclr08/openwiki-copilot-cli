@@ -133,4 +133,23 @@ describe("parseQuestions", () => {
       /serbest metin/u,
     );
   });
+
+  test("drops non-string why but keeps the question", () => {
+    const questions = parseQuestions(
+      '[{"section":"1","question":"Soru?","why":3}]',
+    );
+
+    expect(questions).toHaveLength(1);
+    expect(questions[0]).toEqual({
+      section: "1",
+      question: "Soru?",
+    });
+  });
+
+  test("survives a stray bracket in prose before the fenced JSON", () => {
+    const raw =
+      'Kaynak: [wiki](openwiki/index.md)\n```json\n[{"section":"1","question":"Soru?"}]\n```';
+
+    expect(parseQuestions(raw)).toHaveLength(1);
+  });
 });
