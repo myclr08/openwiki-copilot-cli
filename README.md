@@ -167,6 +167,29 @@ The wiki this mode produces is an ordinary OpenWiki: the same OKF front matter, 
 
 </details>
 
+## From wiki to technical design document
+
+`openwiki tdd` fills the company's "MVP - Teknik Detay" template for a new
+project, grounded in the workspace wiki:
+
+```sh
+openwiki tdd ~/repos --jira DNZ-1111
+```
+
+The run reads the Jira record when a key is given (`OPENWIKI_JIRA_BASE_URL`
+and `OPENWIKI_JIRA_TOKEN` — a profile Personal Access Token, sent as a
+Bearer header; both can live in `~/.openwiki/.env`), asks for an optional
+brief, then interviews you in the terminal — asking only what the wiki and
+the Jira record cannot answer. Every answer is saved immediately, so an
+interrupted session resumes where it stopped. The finished document lands in
+`<workspace>/tdd/<KEY>/tdd.md` as Markdown ready to paste into Confluence,
+with `[Netleştirilecek: …]` marking what still needs a human decision.
+
+Readable Jira attachments (txt, md, csv, PDF, Word) are pulled into the
+evidence; unreadable ones (images, Excel) become interview questions instead
+of silently disappearing. `--template <file>` substitutes a newer company
+template; `--output <file>` copies the document elsewhere.
+
 ## Connect your sources
 
 In `personal` mode, OpenWiki ingests knowledge from the tools you already use, synthesizing them into your local wiki. First-run onboarding offers setup for **local git repositories, Notion, Gmail, X/Twitter, Web Search, and Hacker News**.
