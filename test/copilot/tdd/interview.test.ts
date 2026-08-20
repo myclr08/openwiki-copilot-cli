@@ -82,6 +82,29 @@ describe("runInterview", () => {
     const content = await readFile(answersFile, "utf8");
     expect(content).toContain("Evet, onay adımıyla.");
   });
+
+  test("stream error is handled gracefully: pending questions recorded as skip", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "openwiki-interview-"));
+    const answersFile = path.join(dir, "answers.md");
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const io = { input, output };
+
+    // Write the first line and set up error to be emitted after the reader is created.
+    input.write("Mobil QR ödeme.\n");
+    setTimeout(() => {
+      input.destroy(new Error("boom"));
+    }, 50);
+
+    const result = await runInterview(QUESTIONS, answersFile, io);
+
+    expect(result).toEqual({ answered: 1, skipped: 1 });
+    const content = await readFile(answersFile, "utf8");
+    expect(content).toContain("## Soru: Hangi problem çözülüyor?");
+    expect(content).toContain("Mobil QR ödeme.");
+    expect(content).toContain("## Soru: Yeni ROTA akışı gerekiyor mu?");
+    expect(content).toContain("geç");
+  });
 });
 
 describe("parseAnswersFile", () => {

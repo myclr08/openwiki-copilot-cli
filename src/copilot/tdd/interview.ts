@@ -43,6 +43,13 @@ class LineReader {
       this.closed = true;
       for (const waiter of this.waiters.splice(0)) waiter("");
     });
+    const handleError = () => {
+      this.closed = true;
+      for (const waiter of this.waiters.splice(0)) waiter("");
+      this.readline.close();
+    };
+    this.io.input.on("error", handleError);
+    this.readline.on("error", handleError);
   }
 
   /** Writes the prompt and resolves with the next input line ("" after EOF). */
