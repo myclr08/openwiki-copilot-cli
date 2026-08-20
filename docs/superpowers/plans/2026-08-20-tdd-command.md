@@ -2609,7 +2609,7 @@ prints its path, and exit code is 0.
 
 Add after the "Many repositories, one wiki" section, following its tone:
 
-````markdown
+```markdown
 ## From wiki to technical design document
 
 `openwiki tdd` fills the company's "MVP - Teknik Detay" template for a new
@@ -2632,7 +2632,7 @@ Readable Jira attachments (txt, md, csv, PDF, Word) are pulled into the
 evidence; unreadable ones (images, Excel) become interview questions instead
 of silently disappearing. `--template <file>` substitutes a newer company
 template; `--output <file>` copies the document elsewhere.
-````
+```
 
 (Remove the zero-width markers around the fence when pasting.)
 
