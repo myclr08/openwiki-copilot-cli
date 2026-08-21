@@ -182,10 +182,12 @@ launcher resolution, and event bridge unchanged:
 | `src/copilot/tdd/run.ts`       | Orchestration of the five steps; validation; summary                 |
 | `src/cli/tdd-command.ts`       | Argument parsing, following `workspace-command.ts`                   |
 
-Attachment extraction needs two small pure-JS, no-network dependencies
-(PDF text extraction; zip reading for DOCX). The exact packages are an
-implementation choice; the constraint — pure JS, no network access, no
-native build step — is not.
+Attachment extraction adds one small pure-JS, no-network dependency for
+PDF text extraction. DOCX (a ZIP of XML) is read with a minimal in-repo
+ZIP entry reader on `node:zlib` — company policy bars the usual archive
+packages, and the need is one named entry, stored or deflated. The
+constraint — pure JS, no network access, no native build step — binds any
+future dependency here too.
 
 ## Error handling
 

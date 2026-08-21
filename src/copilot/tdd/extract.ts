@@ -1,5 +1,5 @@
 import path from "node:path";
-import { strFromU8, unzipSync } from "fflate";
+import { readZipEntry } from "./zip.js";
 import { extractText, getDocumentProxy } from "unpdf";
 
 /** Formats included verbatim in the evidence. */
@@ -54,14 +54,14 @@ export async function extractPdfText(data: Uint8Array): Promise<string> {
  * Deliberately dependency-light — evidence needs the words, not the styling.
  */
 export function extractDocxText(data: Uint8Array): string {
-  const files = unzipSync(data);
-  const document = files["word/document.xml"];
+  const document = readZipEntry(data, "word/document.xml");
 
   if (!document) {
     throw new Error("Not a readable .docx: word/document.xml is missing.");
   }
 
-  return strFromU8(document)
+  return new TextDecoder()
+    .decode(document)
     .replace(/<w:p[ >]/gu, "\n<w:p ")
     .replace(/<[^>]+>/gu, "")
     .replace(/&amp;/gu, "&")
